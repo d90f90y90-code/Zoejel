@@ -1,0 +1,320 @@
+name: Build APK
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: 8.7 }
+      - name: Create project
+        run: |
+          set -e
+          mkdir -p qareeb && cd qareeb
+          cat > settings.gradle <<'QAREEB_EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = "Qareeb"
+          include ':app'
+          QAREEB_EOF
+          cat > build.gradle <<'QAREEB_EOF'
+          plugins { id 'com.android.application' version '8.5.2' apply false }
+          QAREEB_EOF
+          cat > gradle.properties <<'QAREEB_EOF'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2g
+          QAREEB_EOF
+          mkdir -p app
+          cat > app/build.gradle <<'QAREEB_EOF'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'app.qareeb'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'app.qareeb'
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+              compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+          }
+          dependencies { implementation 'androidx.webkit:webkit:1.11.0' }
+          QAREEB_EOF
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'QAREEB_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <application android:label="قريب" android:supportsRtl="true"
+                  android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+                      android:windowSoftInputMode="adjustResize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          QAREEB_EOF
+          mkdir -p app/src/main/java/app/qareeb
+          cat > app/src/main/java/app/qareeb/MainActivity.java <<'QAREEB_EOF'
+          package app.qareeb;
+
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.webkit.*;
+          import android.widget.EditText;
+          import androidx.webkit.WebViewAssetLoader;
+
+          public class MainActivity extends Activity {
+              WebView web;
+
+              @Override protected void onCreate(Bundle b) {
+                  super.onCreate(b);
+                  getWindow().setStatusBarColor(Color.parseColor("#2aa3e0"));
+                  web = new WebView(this);
+                  setContentView(web);
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+                      .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
+                  web.setWebViewClient(new WebViewClient() {
+                      @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+                          return loader.shouldInterceptRequest(r.getUrl());
+                      }
+                  });
+                  web.setWebChromeClient(new WebChromeClient() {
+                      @Override public boolean onJsPrompt(WebView v, String url, String msg, String def, final JsPromptResult res) {
+                          final EditText et = new EditText(MainActivity.this);
+                          et.setText(def);
+                          new AlertDialog.Builder(MainActivity.this).setMessage(msg).setView(et)
+                              .setPositiveButton("حسنا", (d, i) -> res.confirm(et.getText().toString()))
+                              .setNegativeButton("إلغاء", (d, i) -> res.cancel())
+                              .setOnCancelListener(d -> res.cancel()).show();
+                          return true;
+                      }
+                      @Override public boolean onJsAlert(WebView v, String url, String msg, final JsResult res) {
+                          new AlertDialog.Builder(MainActivity.this).setMessage(msg)
+                              .setPositiveButton("حسنا", (d, i) -> res.confirm())
+                              .setOnCancelListener(d -> res.confirm()).show();
+                          return true;
+                      }
+                  });
+                  web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+              }
+
+              @Override public void onBackPressed() {
+                  web.evaluateJavascript("(function(){var s=document.querySelector('#sh.on');if(s){document.querySelector('#cl').click();return 1}"
+                      + "if(document.querySelector('#chat.on')){document.querySelector('#back').click();return 1}return 0})()",
+                      v -> { if (!"1".equals(v)) finish(); });
+              }
+          }
+          QAREEB_EOF
+          mkdir -p app/src/main/assets
+          cat > app/src/main/assets/index.html <<'QAREEB_EOF'
+          <!DOCTYPE html>
+          <html lang="ar" dir="rtl">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+          <title>قريب – مراسلة بلا سيرفر</title>
+          <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+          <style>
+          :root{--bg:#fff;--bg2:#f1f5f9;--ink:#0f172a;--mut:#64748b;--pri:#2aa3e0;--priD:#1b84bd;--out:#dff3ff;--in:#fff;--chat:#dde7ef;--line:#e2e8f0;--ok:#22c55e;
+          box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+          @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17212b;--bg2:#0e1621;--ink:#e8eef4;--mut:#7f91a4;--pri:#3aa6e6;--priD:#2b7fb3;--out:#2b5278;--in:#182533;--chat:#0e1621;--line:#243447}}
+          :root[data-theme="dark"]{--bg:#17212b;--bg2:#0e1621;--ink:#e8eef4;--mut:#7f91a4;--pri:#3aa6e6;--priD:#2b7fb3;--out:#2b5278;--in:#182533;--chat:#0e1621;--line:#243447}
+          *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+          html,body{height:100%;margin:0}
+          body{font-family:'Tajawal',system-ui,sans-serif;background:var(--bg2);color:var(--ink);background-color:var(--bg2)}
+          #app{height:100%;max-width:520px;margin:0 auto;background:var(--bg);position:relative;overflow:hidden}
+          .view{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg)}
+          #chat{background:var(--chat);transform:translateX(-100%);transition:transform .2s}
+          #chat.on{transform:none}
+          header{background:var(--pri);color:#fff;display:flex;align-items:center;gap:10px;padding:12px 14px;min-height:56px}
+          header h1{font-size:19px;margin:0;flex:1;font-weight:700}
+          header small{display:block;font-size:12px;opacity:.85;font-weight:400}
+          button{font:inherit;cursor:pointer;border:0}
+          .ib{background:none;color:inherit;font-size:22px;padding:4px 8px;border-radius:8px}
+          #list{flex:1;overflow:auto}
+          .row{display:flex;gap:12px;padding:10px 14px;align-items:center;border-bottom:1px solid var(--line);cursor:pointer}
+          .av{width:48px;height:48px;border-radius:50%;background:var(--pri);color:#fff;display:grid;place-items:center;font-weight:700;font-size:20px;flex:none;position:relative}
+          .av.on::after{content:"";position:absolute;bottom:0;inset-inline-start:0;width:13px;height:13px;border-radius:50%;background:var(--ok);border:2px solid var(--bg)}
+          .mid{flex:1;min-width:0}.mid b{display:block}.mid span{color:var(--mut);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+          .meta{text-align:end;font-size:12px;color:var(--mut)}
+          .badge{background:var(--pri);color:#fff;border-radius:11px;padding:1px 7px;display:inline-block;margin-top:4px}
+          .empty{padding:48px 28px;text-align:center;color:var(--mut);line-height:1.8}
+          .fab{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom,0px));inset-inline-start:20px;width:56px;height:56px;border-radius:50%;background:var(--pri);color:#fff;font-size:28px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+          #msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:4px}
+          .b{max-width:80%;padding:7px 11px 5px;border-radius:14px;background:var(--in);white-space:pre-wrap;word-break:break-word;align-self:flex-start;border-end-start-radius:4px}
+          .b.me{align-self:flex-end;background:var(--out);border-end-start-radius:14px;border-end-end-radius:4px}
+          .b i{display:block;font-style:normal;font-size:11px;color:var(--mut);text-align:end;margin-top:2px}
+          .bar{display:flex;gap:8px;padding:8px;background:var(--bg);align-items:flex-end}
+          .bar textarea{flex:1;font:inherit;border:1px solid var(--line);border-radius:20px;padding:9px 14px;background:var(--bg2);color:var(--ink);resize:none;max-height:110px;outline:none}
+          .send{width:44px;height:44px;border-radius:50%;background:var(--pri);color:#fff;font-size:20px;flex:none}
+          .note{background:var(--bg);color:var(--mut);font-size:13px;padding:8px 14px;display:none;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+          .note.on{display:flex}.note button{background:var(--pri);color:#fff;border-radius:8px;padding:5px 12px}
+          .sheet{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:5}
+          .sheet.on{display:flex}
+          .card{background:var(--bg);width:100%;max-height:92%;overflow:auto;border-radius:18px 18px 0 0;padding:18px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+          .card h2{margin:0 0 4px;font-size:19px}.card p{color:var(--mut);margin:4px 0 12px;font-size:14px;line-height:1.7}
+          .tabs{display:flex;gap:6px;margin:10px 0}.tabs button{flex:1;padding:9px;border-radius:10px;background:var(--bg2);color:var(--ink)}.tabs .a{background:var(--pri);color:#fff}
+          .card textarea,.card input{width:100%;font:inherit;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg2);color:var(--ink);direction:ltr;margin:6px 0;outline:none}
+          .card textarea{height:90px;font-size:12px}
+          .card input{direction:rtl}
+          .btn{background:var(--pri);color:#fff;border-radius:10px;padding:11px 16px;width:100%;margin-top:4px}
+          .btn.s{background:var(--bg2);color:var(--ink)}
+          .lbl{font-size:13px;color:var(--mut);margin-top:8px}
+          </style>
+          </head>
+          <body>
+          <div id="app">
+           <div class="view" id="home">
+            <header><h1>قريب<small id="me"></small></h1><button class="ib" id="ren" title="اسمي">✎</button></header>
+            <div id="list"></div>
+            <button class="fab" id="add" aria-label="جهة اتصال جديدة">+</button>
+           </div>
+           <div class="view" id="chat">
+            <header><button class="ib" id="back" aria-label="رجوع">→</button><div class="av" id="cav" style="width:38px;height:38px;font-size:16px"></div><h1><span id="cn"></span><small id="cs"></small></h1></header>
+            <div class="note" id="note"><span style="flex:1">غير متصل. الرسائل ستُرسل عند الاتصال.</span><button id="re">اتصال</button></div>
+            <div id="msgs"></div>
+            <div class="bar"><textarea id="t" rows="1" placeholder="اكتب رسالة"></textarea><button class="send" id="s" aria-label="إرسال">➤</button></div>
+           </div>
+           <div class="sheet" id="sh"><div class="card">
+            <h2>اتصال مباشر</h2>
+            <p>لا يوجد سيرفر. جهازك يتصل بجهاز صديقك مباشرة، وتتبادلان رمزين فقط عبر أي تطبيق (واتساب مثلا).</p>
+            <div class="tabs"><button id="t1" class="a">أنا أدعو</button><button id="t2">لدي دعوة</button></div>
+            <div id="p1">
+             <div class="lbl">1. أرسل هذا الرمز لصديقك</div>
+             <textarea id="o1" readonly placeholder="جاري التجهيز…"></textarea>
+             <button class="btn s" data-copy="o1">نسخ الرمز</button>
+             <div class="lbl">2. الصق رده هنا</div>
+             <textarea id="i1" placeholder="الصق رمز الرد"></textarea>
+             <button class="btn" id="go1">اتصال</button>
+            </div>
+            <div id="p2" hidden>
+             <div class="lbl">1. الصق دعوة صديقك</div>
+             <textarea id="i2" placeholder="الصق رمز الدعوة"></textarea>
+             <button class="btn" id="go2">إنشاء الرد</button>
+             <div class="lbl">2. أرسل هذا الرد له وانتظر الاتصال</div>
+             <textarea id="o2" readonly></textarea>
+             <button class="btn s" data-copy="o2">نسخ الرد</button>
+            </div>
+            <button class="btn s" id="cl" style="margin-top:12px">إغلاق</button>
+           </div></div>
+          </div>
+          <script>
+          const $=s=>document.querySelector(s);
+          let S={me:null,c:{}},peers={},cur=null,tmp=null;
+          try{S=JSON.parse(localStorage.getItem('qareeb'))||S}catch(e){}
+          if(!S.me){const n=(prompt('ما اسمك؟')||'مستخدم').trim()||'مستخدم';S.me={id:Math.random().toString(36).slice(2,10),name:n}}
+          const save=()=>{try{localStorage.setItem('qareeb',JSON.stringify(S))}catch(e){}};save();
+          const uid=()=>Math.random().toString(36).slice(2,10);
+          const tm=t=>new Date(t).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'});
+          const on=id=>peers[id]&&peers[id].readyState==='open';
+          function ensure(id,name){if(!S.c[id])S.c[id]={name,m:[],u:0};else if(name)S.c[id].name=name;save()}
+          function render(){
+           $('#me').textContent=S.me.name;
+           const L=$('#list');L.innerHTML='';
+           const ids=Object.keys(S.c).sort((a,b)=>lt(b)-lt(a));
+           if(!ids.length){L.innerHTML='<div class="empty">لا توجد محادثات بعد.<br>اضغط + لتتصل بصديق مباشرة، بدون أي سيرفر.</div>'}
+           ids.forEach(id=>{const c=S.c[id],l=c.m[c.m.length-1];
+            const r=document.createElement('div');r.className='row';
+            r.innerHTML='<div class="av'+(on(id)?' on':'')+'"></div><div class="mid"><b></b><span></span></div><div class="meta"><div></div></div>';
+            r.querySelector('.av').textContent=c.name[0];r.querySelector('b').textContent=c.name;
+            r.querySelector('span').textContent=l?l.x:(on(id)?'متصل':'غير متصل');
+            r.querySelector('.meta div').textContent=l?tm(l.ts):'';
+            if(c.u){const b=document.createElement('span');b.className='badge';b.textContent=c.u;r.querySelector('.meta').append(b)}
+            r.onclick=()=>open(id);L.append(r)});
+           if(cur)drawChat();
+          }
+          const lt=id=>{const m=S.c[id].m;return m.length?m[m.length-1].ts:0};
+          function open(id){cur=id;S.c[id].u=0;save();$('#chat').classList.add('on');drawChat();render()}
+          function drawChat(){
+           const c=S.c[cur];if(!c)return;
+           $('#cn').textContent=c.name;$('#cav').textContent=c.name[0];
+           $('#cs').textContent=on(cur)?'متصل الآن':'غير متصل';
+           $('#note').classList.toggle('on',!on(cur));
+           const M=$('#msgs');M.innerHTML='';
+           c.m.forEach(m=>{const b=document.createElement('div');b.className='b'+(m.me?' me':'');
+            const t=document.createElement('span');t.textContent=m.x;const i=document.createElement('i');
+            i.textContent=tm(m.ts)+(m.me?(m.st==2?' ✓✓':m.st==1?' ✓':' ⏱'):'');b.append(t,i);M.append(b)});
+           M.scrollTop=M.scrollHeight;
+          }
+          function tx(id,o){try{peers[id].send(JSON.stringify(o))}catch(e){}}
+          function send(){
+           const t=$('#t'),x=t.value.trim();if(!x||!cur)return;
+           const m={i:uid(),me:1,x,ts:Date.now(),st:0};S.c[cur].m.push(m);
+           if(on(cur)){tx(cur,{t:'msg',i:m.i,x,ts:m.ts});m.st=1}
+           save();t.value='';t.style.height='';drawChat();render();
+          }
+          function onMsg(dc,m){
+           if(m.t==='hello'){
+            dc.pid=m.id;peers[m.id]=dc;ensure(m.id,m.name);
+            S.c[m.id].m.forEach(x=>{if(x.me&&x.st==0){tx(m.id,{t:'msg',i:x.i,x:x.x,ts:x.ts});x.st=1}});
+            save();$('#sh').classList.remove('on');render();
+           }else if(m.t==='msg'&&dc.pid){
+            const c=S.c[dc.pid];if(c.m.some(x=>x.i===m.i))return;
+            c.m.push({i:m.i,me:0,x:m.x,ts:m.ts});if(cur!==dc.pid)c.u++;
+            tx(dc.pid,{t:'ack',i:m.i});save();render();
+           }else if(m.t==='ack'&&dc.pid){
+            const x=S.c[dc.pid].m.find(x=>x.i===m.i);if(x){x.st=2;save();render()}
+           }
+          }
+          function setup(dc){
+           dc.onopen=()=>dc.send(JSON.stringify({t:'hello',id:S.me.id,name:S.me.name}));
+           dc.onmessage=e=>{try{onMsg(dc,JSON.parse(e.data))}catch(x){}};
+           dc.onclose=()=>{if(dc.pid&&peers[dc.pid]===dc){delete peers[dc.pid];render()}};
+          }
+          const mkpc=()=>new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+          const gather=pc=>new Promise(r=>{if(pc.iceGatheringState==='complete')return r();pc.onicegatheringstatechange=()=>pc.iceGatheringState==='complete'&&r();setTimeout(r,5000)});
+          const enc=d=>btoa(JSON.stringify(d)),dec=s=>JSON.parse(atob(s.replace(/\s/g,'')));
+          async function invite(){
+           $('#o1').value='';$('#i1').value='';
+           const pc=tmp=mkpc();setup(pc.createDataChannel('c'));
+           await pc.setLocalDescription(await pc.createOffer());await gather(pc);
+           $('#o1').value=enc(pc.localDescription);
+          }
+          function tab(n){$('#p1').hidden=n!=1;$('#p2').hidden=n!=2;$('#t1').className=n==1?'a':'';$('#t2').className=n==2?'a':'';}
+          function openSheet(){$('#sh').classList.add('on');tab(1);invite()}
+          $('#add').onclick=openSheet;$('#re').onclick=openSheet;
+          $('#cl').onclick=()=>$('#sh').classList.remove('on');
+          $('#t1').onclick=()=>tab(1);$('#t2').onclick=()=>{tab(2);$('#o2').value='';$('#i2').value=''};
+          $('#go1').onclick=async()=>{try{await tmp.setRemoteDescription(dec($('#i1').value))}catch(e){alert('الرمز غير صحيح')}};
+          $('#go2').onclick=async()=>{
+           try{const pc=tmp=mkpc();pc.ondatachannel=e=>setup(e.channel);
+            await pc.setRemoteDescription(dec($('#i2').value));
+            await pc.setLocalDescription(await pc.createAnswer());await gather(pc);
+            $('#o2').value=enc(pc.localDescription);
+           }catch(e){alert('الدعوة غير صحيحة')}
+          };
+          document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
+           const e=$('#'+b.dataset.copy);e.select();
+           try{await navigator.clipboard.writeText(e.value)}catch(x){document.execCommand('copy')}
+           b.textContent='تم النسخ';setTimeout(()=>b.textContent=b.dataset.copy=='o1'?'نسخ الرمز':'نسخ الرد',1500);
+          });
+          $('#back').onclick=()=>{cur=null;$('#chat').classList.remove('on');render()};
+          $('#s').onclick=send;
+          $('#t').oninput=e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'};
+          $('#t').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&matchMedia('(pointer:fine)').matches){e.preventDefault();send()}};
+          $('#ren').onclick=()=>{const n=(prompt('اسمك',S.me.name)||'').trim();if(n){S.me.name=n;save();render()}};
+          render();
+          </script>
+          </body>
+          </html>
+          QAREEB_EOF
+      - name: Build
+        working-directory: qareeb
+        run: gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qareeb-apk
+          path: qareeb/app/build/outputs/apk/debug/app-debug.apk
